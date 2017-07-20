@@ -314,6 +314,7 @@
                                                            (base-λ (#,k2 : (base-Π (_ : (base-Unv 0)) (base-Unv 0)))
                                                                    (base-app #,k2 (base-app (base-app EqVc #,p) #,q)))))))))))
 
+;; TODO: Need better mechanism for adding new constants.
 (define (cps-eqv2 [env '()] [env2 '()])
      (let* ([k0 (gensym1 #`EqV2 "k")]
             [k1 (gensym1 #`EqV2 "k")]
@@ -527,13 +528,12 @@
     #:datum-literals (:)
     [(base-λ (m : type) (base-app (base-app m2 n) k)) true]
     [k:id true]
-    [else false]))
-)
+    [else false])))
 
-;; The macros for using this in Cur
+;; debugging macros
 (begin-for-syntax
-(require racket/trace (for-template racket/trace))
-(define (maybe-syntax->datum x)
+  (require racket/trace (for-template racket/trace))
+  (define (maybe-syntax->datum x)
     (if (syntax? x)
         (syntax->datum x)#; (read (open-input-string (+scopes x)))
         x))
@@ -544,9 +544,10 @@
   (current-trace-print-results
    (let ([ctpr (current-trace-print-results)])
      (lambda (s l n)
-       (ctpr s (map maybe-syntax->datum l) n))))
-  )
+       (ctpr s (map maybe-syntax->datum l) n)))))
 
+
+;; User interface
 (define-syntax (reset syn)
   (syntax-parse syn
     [(_ hole e)
@@ -566,13 +567,20 @@
                     [answer-type (attribute ans)])
        (cps-top #'e '() '()))]))
 
-(trace-define-syntax (uncps syn)
+(define-syntax (uncps syn)
   (syntax-parse syn
     [(_ (~optional (~seq #:constants (x:id ...)) #:defaults ([(x 1) null]))
         e)
      (parameterize ([constants (attribute x)])
        (uncps-top #'e '()))]))
 
+(define-syntax (observe syn)
+  (syntax-parse syn
+    [(_ syn)
+     (displayln (cur->datum (cur-normalize #'syn)))
+     #'syn]))
+
+;; tests. sort of
 (axiom Entity : (Type 0))
 (axiom Walk : (Pi (x : Entity) (Type 0)))
 (axiom Love : (Pi (y : Entity) (Pi (x : Entity) (Type 0))))
@@ -588,15 +596,15 @@
                              (Pi (_ : (Pi (_ : (Type 0)) (Type 0))) (Type 0))))
                       (Type 0))))
 (axiom EqV2 : (Pi (p : (Pi (y : Entity) (Pi (x : Entity) (Type 0))))
-                 (Pi (q : (Pi (y : Entity) (Pi (x : Entity) (Type 0)))) (Type 0))))
+                  (Pi (q : (Pi (y : Entity) (Pi (x : Entity) (Type 0)))) (Type 0))))
 (axiom EqV2c : (Pi (p :
-                     (Pi (y : Entity)
-                         (Pi (_ :
-                                (Pi (_ :
-                                       (Pi (x : Entity)
-                                           (Pi (_ : (Pi (_ : (Type 0)) (Type 0))) (Type 0))))
-                                    (Type 0)))
-                             (Type 0))))
+                      (Pi (y : Entity)
+                          (Pi (_ :
+                                 (Pi (_ :
+                                        (Pi (x : Entity)
+                                            (Pi (_ : (Pi (_ : (Type 0)) (Type 0))) (Type 0))))
+                                     (Type 0)))
+                              (Type 0))))
                    (Pi (q :
                           (Pi (y : Entity)
                               (Pi (_ :
@@ -605,7 +613,7 @@
                                                 (Pi (_ : (Pi (_ : (Type 0)) (Type 0))) (Type 0))))
                                          (Type 0)))
                                   (Type 0))))
-                      (Type 0))))
+                       (Type 0))))
 (axiom Sigma : (Pi (A : (Type 0)) (P : (Pi (a : A) (Type 0))) (Type 0)))
 (axiom Sigmac : (Pi (A : (Type 0))
                     (Pi (P :
@@ -618,46 +626,40 @@
 (axiom hole-e : Entity)
 
 #;(begin-for-syntax
-  (trace cps-obj)
-  (trace cps-constr))
-
-(define-syntax (observe syn)
-  (syntax-parse syn
-    [(_ syn)
-     (displayln (cur->datum (cur-normalize #'syn)))
-     #'syn]))
+    (trace cps-obj)
+    (trace cps-constr))
 
 ;;application
-#;(cps
+(cps
  #:constants (Entity)
  (λ (f : (Π (_ : Entity) Entity))
    (λ (x : Entity) (f x))))
 
-#;((cps
+((cps
   #:constants (j Entity Walk)
   (Walk j))
  (λ (x : (Type 0)) x))
 
-#;((cps
+((cps
   #:constants (j m Entity Love)
   (Love m j))
  (λ (x : (Type 0)) x))
 
 ;; term-level computation
-#;(cps
+(cps
  #:constants (j Entity)
  ((λ (x : Entity) x) j))
 
-#;(cps
+(cps
  #:constants (j Entity Walk)
  ((λ (p : (Π (x : Entity) (Type 0))) j) Walk))
 
-#;(cps
+(cps
  #:constants (j Entity Walk)
  (λ (p : (Walk j)) p))
 
 ;; trivial term-to-type shift
-#;((cps
+((cps
   #:constants (j Entity Walk)
   (reset
    hole
@@ -668,7 +670,7 @@
  (λ (x : (Type 0)) x))
 
 ;; John only loves MARY
-#;(observe
+(observe
  ((cps
    #:constants (j m Entity Love Iff EqNP)
    (reset
@@ -681,7 +683,7 @@
   (λ (x : (Type 0)) x)))
 
 ;; John loves everyone
-#;(observe
+(observe
  ((cps
    #:constants (Entity Love m j)
    (reset
@@ -691,9 +693,9 @@
                    (Π (x : Entity) (k x))))
           j)))
   (λ (x : (Type 0)) x)))
-  
+
 ;; trivial type-to-type shift
-#;(observe
+(observe
  ((cps
    #:constants (j Entity Walk Walkc)
    (reset
@@ -705,7 +707,7 @@
      j)))
   (λ (x : (Type 0)) x)))
 
-#;(observe
+(observe
  ((cps
    #:constants (j Entity Walk)
    (reset
@@ -719,7 +721,7 @@
   (λ (x : (Type 0)) x)))
 
 ;; John only WALKS
-#;(observe
+(observe
  ((cps
    #:constants (j Entity Walk Iff EqV EqVc)
    (reset
@@ -733,35 +735,35 @@
   (λ (x : (Type 0)) x)))
 
 ;; John only LOVES Mary
-#;(observe
+(observe
  ((cps
-  #:constants (j m Entity Love Iff EqV2 EqV2c)
-  (reset
-   hole
-   ((shift Love
-           (λ (k : (Π (f : (Π (y : Entity) (Π (x : Entity) (Type 0))))
-                      (Type 0)))
-             (Π (p : (Π (y : Entity) (Π (x : Entity) (Type 0))))
-                (Iff (k p) (EqV2 p Love)))))
-    m
-    j)))
- (λ (x : (Type 0)) x)))
+   #:constants (j m Entity Love Iff EqV2 EqV2c)
+   (reset
+    hole
+    ((shift Love
+            (λ (k : (Π (f : (Π (y : Entity) (Π (x : Entity) (Type 0))))
+                       (Type 0)))
+              (Π (p : (Π (y : Entity) (Π (x : Entity) (Type 0))))
+                 (Iff (k p) (EqV2 p Love)))))
+     m
+     j)))
+  (λ (x : (Type 0)) x)))
 
 #;(require cur/stdlib/sigma)
 ;(axiom fst : (Pi (A : (Type 0)) (P : (Pi (a : A) (Type 0))) (p : (Sigma A P)) A))
 ;(axiom fstc : (cps #:constants (Sigma) (Pi (A : (Type 0)) (P : (Pi (a : A) (Type 0))) (p : (Sigma A P)) A)))
 
-(observe
- (cps
-  #:constants (j m Entity Love Sigma)
-  (reset
-   hole
-   (Sigma Entity (λ (x : Entity) (Love j x))))))
+#;(observe
+   (cps
+    #:constants (j m Entity Love Sigma)
+    (reset
+     hole
+     (Sigma Entity (λ (x : Entity) (Love j x))))))
 
 #;(observe
- (cps
-  #:constants (j m Entity Σ1 pair1 fst1 snd1 Σ0 pair0 fst0 snd0)
-  (reset
-   hole
-   (λ (x : (Σ (x : Entity) (Love j x)))
-     (fst x)))))
+   (cps
+    #:constants (j m Entity Σ1 pair1 fst1 snd1 Σ0 pair0 fst0 snd0)
+    (reset
+     hole
+     (λ (x : (Σ (x : Entity) (Love j x)))
+       (fst x)))))
