@@ -7,7 +7,7 @@ all: setup
 # Primarily for use by CI.
 # Installs dependencies as well as linking this as a package.
 install:
-	raco pkg install --deps search-auto
+	raco pkg install --deps search-auto -n $(PACKAGE-NAME)
 
 remove:
 	raco pkg remove $(PACKAGE-NAME)
