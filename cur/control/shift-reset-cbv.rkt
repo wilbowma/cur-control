@@ -117,7 +117,7 @@
   (define (cps-type e [env '()]) 
     (if (is-constr? e env)
         (cps-constr2 e env)
-        (cps-unv e env)))
+        (cps-unv2 e env)))
 
   ;; CPS translation of types
   (define (cps-constr t [env '()])
@@ -126,7 +126,7 @@
       [(base-λ (var : type) body)
        (let* ([k (gensym1 t "k")]
               [new-env (extend-env env #'var #'type)]
-              [new-type0 (cps-unv (cur-type-infer t #:local-env env) env)]
+              [new-type0 (cps-unv2 (cur-type-infer t #:local-env env) env)]
               [new-type (cps-type #'type env)]
               [new-body (cps-constr #'body new-env)])
          #`(base-λ (#,k : (base-Π (_ : #,new-type0) #,(answer-type)))
@@ -144,9 +144,12 @@
                   [m (gensym1 t "m")]
                   [n (gensym1 t "n")]
                   [type0 (cur-type-infer t #:local-env env)]
-                  [new-type0 (cps-unv type0 env)]
-                  [new-type1 (cps-unv (cur-type-infer #'e1 #:local-env env) env)]
-                  [new-type2 (cps-unv (cur-type-infer #'e2 #:local-env env) env)]
+                  [new-type0 (cps-unv2 type0 env)]
+                  [new-type1 (cps-unv2 (cur-type-infer #'e1 #:local-env env) env)]
+                  [type2 (cur-type-infer #'e2 #:local-env env)]
+                  [new-type2 (if (is-obj? #'e2 env)
+                                 (cps-constr2 type2 env)
+                                 (cps-unv2 type2 env))]
                   [new-e1 (cps-constr #'e1 env)]
                   [new-e2 (cps-top #'e2 env)])
              #`(base-λ (#,k : (base-Π (_ : #,new-type0) #,(answer-type)))
@@ -172,7 +175,7 @@
       [a:id
        #:when (not (constant? #'a env))
        (let ([k (gensym1 t "k")]
-             [new-type (cps-unv (cur-type-infer #'a #:local-env env) env)])
+             [new-type (cps-unv2 (cur-type-infer #'a #:local-env env) env)])
          #`(base-λ (#,k : (base-Π (_ : #,new-type) #,(answer-type))) (base-app #,k a)))]
       [(shift _ ...) (cps-shift this-syntax env)]
       [(reset _ ...) (cps-reset this-syntax env)]))
@@ -209,9 +212,8 @@
       [(base-Π (var : type) body)
        (let* ([new-env (extend-env env #'var #'type)]
               [new-type (cps-type #'type env)]
-              [new-body (cps-top #'body new-env)])
-       #`(base-Π (var : #,new-type) #,new-body))]
-      [a:id #'a]))
+              [new-body (cps-unv #'body new-env)])
+       #`(base-Π (var : #,new-type) #,new-body))]))
 
   ;; value-translation of universes (used when CPS translating types)
   (define (cps-unv2 t [env '()])
@@ -220,8 +222,10 @@
       [(base-Unv i) #`(base-Unv i)]
       [(base-Π (var : type) body)
        (let* ([new-env (extend-env env #'var #'type)]
-              [new-type (cps-top2 #'type env)]
-              [new-body (cps-unv2 #'body new-env)])
+              [new-type (if (is-constr? #'type env)
+                            (cps-constr2 #'type env)
+                            (cps-unv2 #'type env))]
+              [new-body (cps-top #'body new-env)])
          #`(base-Π (var : #,new-type) #,new-body))]))
 
   ;; translation of constants
@@ -234,7 +238,7 @@
         #:literals (base-Π)
         [(base-Π (var : ann) result)
          (let* ([k (gensym1 c "k")]
-                [new-type (cps-unv type env)]
+                [new-type (cps-unv2 type env)]
                 [new-ann (cps-type #'ann env)]
                 [new-env (extend-env env #'var #'ann)])
            #`(base-λ (#,k : (base-Π (_ : #,new-type) #,(answer-type)))
@@ -246,7 +250,9 @@
                                                         new-env)))))]
         [result
          (let ([k (gensym1 c "k")]
-               [new-type0 (cps-unv #'result env)]
+               [new-type0 (if (is-constr? #'result env)
+                              (cps-constr2 #'result env)
+                              (cps-unv2 #'result env))]
                [r (app-vs (lookup-cps c0 cps-constants-list) vs)])
            #`(base-λ (#,k : (base-Π (_ : #,new-type0) #,(answer-type)))
                      (base-app #,k #,r)))])))
@@ -257,7 +263,7 @@
       [(is-obj? t env) (cps-obj t env)]
       [(is-constr? t env) (cps-constr t env)]
       [(is-unv? t env) ;; double-negation at universe level
-       #`(base-Π (_ : (base-Π (_ : #,(cps-unv t env)) #,(answer-type))) #,(answer-type))]
+       #`(base-Π (_ : (base-Π (_ : #,(cps-unv2 t env)) #,(answer-type))) #,(answer-type))]
       [else (error 'cps-top "Something terrible happened: ~a is not anything I know about.~n" t)]))
 
   ;; top translation (when CPS translating terms)
@@ -266,7 +272,7 @@
       [(is-obj? t env) (cps-obj t env)]
       [(is-constr? t env) ;; double-negation at type level
        #`(base-Π (_ : (base-Π (_ : #,(cps-constr2 t env)) #,(answer-type))) #,(answer-type))]
-      [(is-unv? t env) (cps-unv2 t env)]
+      [(is-unv? t env) (cps-unv t env)]
       [else (error 'cps-top2 "Something terrible happened: ~a is not anything I know about.~n" t)]))
 
   ;; translation of shift
@@ -282,7 +288,8 @@
                [k2 (gensym1 syn "k")]
                [v (gensym1 syn "v")]
                [x (gensym1 syn "x")]
-               [new-type #`(Π (_ : #,(cps-unv #'type env)) ans)]
+               [new-type0 (cps-type #'type env)]
+               [new-type #`(Π (_ : #,new-type0) ans)]
                [new-env (extend-env env #'var #`(base-Π (_ : type) ans))]
                [new-body (parameterize ([captured-cont (cons #'var (captured-cont))])
                            (cps-top #'body new-env))]
