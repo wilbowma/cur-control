@@ -17,7 +17,7 @@
     [unsafe-I-promise-I-know-what-I-am-doing-please-give-me-the-ability-to-introduce-bugs-by-using-cur-current-identifier=?
      cur-current-identifier=?]))
   ;; As we use gensym, this is hopefully safeish.
-  (cur-current-identifier=? (lambda (x y)
+  #;(cur-current-identifier=? (lambda (x y)
                               (eq? (syntax->datum x) (syntax->datum y))))
   (require
    (for-template
